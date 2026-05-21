@@ -1,0 +1,6 @@
+{
+  "name": "IRHC Support",
+  "description": "Integrated Reproductive Health Awareness and Consultation System (IRHC), enabling secure Q&As, clinical appointment scheduling, and offline awareness resources optimized for remote communities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
