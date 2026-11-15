@@ -77,6 +77,7 @@ $('bookingForm').addEventListener('submit',async e=>{
    const {data,error}=await db.from('appointments').insert({...payload,patient_id:user.id,provider_id:providerId}).select().single();
    if(error) throw error;
    appointments.unshift({...data,provider_name:chosen});
+   if(providerId){const {data:thread,error:threadError}=await db.from('consultation_threads').insert({appointment_id:data.id,patient_id:user.id,provider_id:providerId}).select().single();if(!threadError&&thread)currentThread=thread.id;}
   } else {
    const item={...payload,id:'DEMO-'+Date.now(),reference_code:'IRH-'+Math.random().toString(36).slice(2,8).toUpperCase(),provider:chosen,provider_name:chosen,date:payload.appointment_date,time:payload.appointment_time};
    appointments.unshift(item); demoAppointments=appointments; localStorage.setItem('irhc_appointments',JSON.stringify(demoAppointments));
@@ -108,6 +109,8 @@ async function loadBackendData(){
  if(!error&&appts)appointments=appts.map(a=>({...a,provider_name:a.providers?.profiles?.full_name||a.providers?.professional_title||'Care team'}));
  const {data:providerData}=await db.from('providers').select('id,professional_title,specialty,facility_name,profiles(full_name)').eq('is_active',true);
  if(providerData?.length)providers=providerData.map(p=>({id:p.id,name:p.profiles?.full_name||p.professional_title,specialty:p.specialty,facility:p.facility_name}));
+ const {data:threads}=await db.from('consultation_threads').select('id,created_at').eq('patient_id',user.id).order('created_at',{ascending:false}).limit(1);
+ if(threads?.length){currentThread=threads[0].id;const {data:msgs}=await db.from('consultation_messages').select('body,created_at,sender_id').eq('thread_id',currentThread).order('created_at');if(msgs)demoMessages=msgs.map(m=>({body:m.body,mine:m.sender_id===user.id,created_at:new Date(m.created_at).toLocaleString()}));renderMessages();}
  renderAppointments();renderProviders();renderNotifications();setAuthUI();
 }
 function openAuth(){if(user){db?.auth.signOut().then(()=>{user=null;profile=null;appointments=demoAppointments;setAuthUI();renderAppointments();setConnection('Demo mode');notify('You have signed out.');});return;}authMode='login';$('authTitle').textContent='Sign in to IRHC';$('authSubmit').textContent='Sign in';$('signupNameWrap').classList.add('hidden');$('signupName').required=false;$('authSwitchText').innerHTML='New to IRHC? <button type="button" id="authSwitch" class="inline-link">Create an account</button>';bindAuthSwitch();$('authModal').showModal();}
@@ -119,8 +122,7 @@ $('authForm').addEventListener('submit',async e=>{
  try{
   if(authMode==='signup'){
    const {data,error}=await db.auth.signUp({email,password,options:{data:{full_name:$('signupName').value.trim()}}});if(error)throw error;
-   if(data.user){const {error:profileError}=await db.from('profiles').insert({id:data.user.id,full_name:$('signupName').value.trim(),role:'community_member'});if(profileError)throw profileError;}
-   notify('Account created. Check your email if confirmation is enabled, then sign in.');
+   notify('Account created. Check your email if confirmation is enabled. Your community profile is created automatically by the database.');
   } else {const {error}=await db.auth.signInWithPassword({email,password});if(error)throw error;notify('Signed in successfully.');}
   $('authModal').close();
  }catch(err){notify(err.message||'Authentication failed.');}
