@@ -22,3 +22,37 @@ create policy thread_read on public.consultation_threads for select using(patien
 create policy message_read on public.consultation_messages for select using(exists(select 1 from public.consultation_threads t where t.id=thread_id and (t.patient_id=auth.uid() or public.is_staff())));create policy message_insert on public.consultation_messages for insert with check(sender_id=auth.uid() and exists(select 1 from public.consultation_threads t where t.id=thread_id and (t.patient_id=auth.uid() or public.is_staff())));
 create policy resources_read on public.health_resources for select using(status='published' or public.is_staff());create policy resources_staff on public.health_resources for all using(public.is_staff()) with check(public.is_staff());create policy notifications_read on public.notifications for select using(recipient_id=auth.uid());create policy audit_admin on public.audit_events for select using(public.current_app_role()='administrator');
 -- Provision privileged roles only through a trusted server-side workflow. Never expose service_role keys in the browser.
+
+-- Create a least-privilege community profile automatically for each new Auth user.
+-- Never copy a role from user-editable signup metadata.
+create or replace function public.handle_new_irhc_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, full_name, role)
+  values (
+    new.id,
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''), 'IRHC member'),
+    'community_member'
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_irhc on auth.users;
+create trigger on_auth_user_created_irhc
+after insert on auth.users
+for each row execute procedure public.handle_new_irhc_user();
+
+-- Allow community users to see the public display profile of active providers only.
+create policy provider_profile_read on public.profiles
+for select using (
+  exists (
+    select 1 from public.providers p
+    where p.user_id = profiles.id and p.is_active = true
+  )
+);
